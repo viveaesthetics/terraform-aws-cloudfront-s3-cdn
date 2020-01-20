@@ -368,3 +368,15 @@ variable "ipv6_enabled" {
   default     = false
   description = "Set to true to enable an AAAA DNS record to be set as well as the A record"
 }
+
+variable "create_acm_certificate" {
+  type        = bool
+  default     = false
+  description = "Whether to create a certificate for CloudFront alias (only works if one certificate was not provide through acm_certificate_arn variable)"
+}
+
+variable "aws_profile" {
+  type        = string
+  default     = ""
+  description = "An AWS profile with permissions on Certificate Manager"
+}

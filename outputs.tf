@@ -42,3 +42,8 @@ output "aliases" {
   value       = var.aliases
   description = "Aliases of the CloudFront distibution"
 }
+
+output "certificate_arm" {
+  value       = local.acm_certificate_arn
+  description = "Certificate corresponding to the distribution alias"
+}

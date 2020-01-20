@@ -188,10 +188,10 @@ resource "aws_cloudfront_distribution" "default" {
   }
 
   viewer_certificate {
-    acm_certificate_arn            = var.acm_certificate_arn
-    ssl_support_method             = var.acm_certificate_arn == "" ? "" : "sni-only"
+    acm_certificate_arn            = local.acm_certificate_arn
+    ssl_support_method             = local.acm_certificate_arn == "" ? "" : "sni-only"
     minimum_protocol_version       = var.minimum_protocol_version
-    cloudfront_default_certificate = var.acm_certificate_arn == "" ? true : false
+    cloudfront_default_certificate = local.acm_certificate_arn == "" ? true : false
   }
 
   default_cache_behavior {
@@ -257,4 +257,52 @@ module "dns" {
   target_dns_name  = aws_cloudfront_distribution.default.domain_name
   target_zone_id   = aws_cloudfront_distribution.default.hosted_zone_id
   ipv6_enabled     = var.ipv6_enabled
+}
+
+
+# Here we need a different AWS provider because CloudFront certificates need to
+# be created in us-east-1
+provider "aws" {
+  region  = "us-east-1"
+  profile = var.aws_profile
+  alias   = "us-east-1"
+}
+
+resource "aws_acm_certificate" "default" {
+  provider          = aws.us-east-1
+  count             = local.create_acm_certificate ? 1 : 0
+  domain_name       = var.aliases[0]
+  validation_method = "DNS"
+  tags              = var.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+data "aws_route53_zone" "default" {
+  count   = var.enabled ? signum(length(compact(var.aliases))) : 0
+  zone_id = var.parent_zone_id
+  name    = var.parent_zone_name
+}
+
+resource "aws_route53_record" "cert_validation" {
+  count   = local.create_acm_certificate ? 1 : 0
+  name    = aws_acm_certificate.default.0.domain_validation_options.0.resource_record_name
+  type    = aws_acm_certificate.default.0.domain_validation_options.0.resource_record_type
+  zone_id = data.aws_route53_zone.default[0].zone_id
+  records = [aws_acm_certificate.default.0.domain_validation_options.0.resource_record_value]
+  ttl     = 60
+}
+
+resource "aws_acm_certificate_validation" "default" {
+  provider                = aws.us-east-1
+  count                   = local.create_acm_certificate ? 1 : 0
+  certificate_arn         = aws_acm_certificate.default.0.arn
+  validation_record_fqdns = aws_route53_record.cert_validation[*].fqdn
+}
+
+locals {
+  create_acm_certificate    = var.create_acm_certificate && var.acm_certificate_arn == "" ? true : false
+  acm_certificate_arn       = local.create_acm_certificate ? "${aws_acm_certificate.default.0.arn}" : var.acm_certificate_arn
 }
